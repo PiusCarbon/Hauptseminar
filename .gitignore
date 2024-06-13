@@ -2,3 +2,6 @@
 *.png
 *.mp4
 *.gif
+
+# ignore pycache
+__pycache__/
