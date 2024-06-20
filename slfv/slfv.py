@@ -12,13 +12,14 @@ import matplotlib.pyplot as plt
 
 def _get_indices(z, r, length, discretization_steps):
     diff = r / (length / discretization_steps)
-    lower_x = np.floor((z[0,:]-diff) * discretization_steps).astype(int)
-    upper_x = np.ceil((z[0,:]+diff) * discretization_steps).astype(int)
+    
+    lower_x = np.floor((z[0,:] * discretization_steps-diff) ).astype(int)
+    upper_x = np.ceil((z[0,:] * discretization_steps+diff) ).astype(int)
     lower_x = np.maximum(lower_x, 0)
     upper_x = np.minimum(upper_x, discretization_steps-1)
 
-    lower_y = np.floor((z[1,:]-diff) * discretization_steps).astype(int)
-    upper_y = np.ceil((z[1,:]+diff) * discretization_steps).astype(int)
+    lower_y = np.floor((z[1,:] * discretization_steps-diff) ).astype(int)
+    upper_y = np.ceil((z[1,:] * discretization_steps+diff) ).astype(int)
     lower_y = np.maximum(lower_y, 0)
     upper_y = np.minimum(upper_y, discretization_steps-1)
     return lower_x, upper_x, lower_y, upper_y
@@ -144,9 +145,20 @@ def rectangle_update_allele_distribution(
 # 3. Improved update_allele_distribution
 ############################################
 
-def _get_neighbors_indices_impr(tree, point, r):
-    neighbors_indices = tree.query_ball_point(point, r)
-    return neighbors_indices
+def _get_neighbors_indices_impr(low_x, up_x, low_y, up_y, r, z, discretization_steps):
+    '''
+    Function to get the indices of neighboring grid points within a radius r of the event point z using a KD-tree
+    '''
+    x_coords = np.arange(low_x, up_x + 1)
+    y_coords = np.arange(low_y, up_y + 1)
+    xx, yy = np.meshgrid(x_coords, y_coords, indexing='ij')
+    grid_points = np.column_stack((xx.ravel(), yy.ravel()))
+
+    radius = r * discretization_steps
+    event_point = z * discretization_steps
+    tree = cKDTree(grid_points)
+    neighbors_indices = tree.query_ball_point(event_point, radius)
+    return grid_points, neighbors_indices
 
 
 # Function to compute the sum of allele_distr values for neighboring points
@@ -184,24 +196,19 @@ def improved_update_allele_distribution(
         plot=False
         ):
     
-    x_coords = np.linspace(0, discretization_steps, discretization_steps+1)
-    y_coords = np.linspace(0, discretization_steps, discretization_steps+1)
-    grid_points = np.array([(x, y) for x in x_coords for y in y_coords]).astype(int)
-    radius = r * discretization_steps
-    event_points = z * discretization_steps
-    tree = cKDTree(grid_points)
+    lower_x, upper_x, lower_y, upper_y = _get_indices(z, r, length, discretization_steps)
 
-    for t, event_point in zip(range(T), event_points.T):
+    for t in range(T):
         # Compute the sum of allele_distr values for neighboring points
-        neighbors_indices = _get_neighbors_indices_impr(tree, event_point, radius[t])
+        local_grid, neighbors_indices = _get_neighbors_indices_impr(lower_x[t], upper_x[t], lower_y[t], upper_y[t], r[t], z[:,t], discretization_steps)
         if neighbors_indices != []:
-            local_distr_var = _local_distr_impr(allele_distr, grid_points, neighbors_indices, no_alleles)
+            local_distr_var = _local_distr_impr(allele_distr, local_grid, neighbors_indices, no_alleles)
             
             # 2. sample a parent allele from the local distribution
             parent_allele_array = _get_parental_array_impr(local_distr_var, no_alleles)
 
             # 3. Update the local distribution of alleles
-            _update_allele_distr_impr(grid_points, allele_distr, parent_allele_array, local_distr_var, u, t, neighbors_indices)
+            _update_allele_distr_impr(local_grid, allele_distr, parent_allele_array, local_distr_var, u, t, neighbors_indices)
     
     if plot:
         plt.imshow(allele_distr[:,:,0])
