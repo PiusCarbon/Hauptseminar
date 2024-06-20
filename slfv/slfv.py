@@ -163,10 +163,7 @@ def _get_neighbors_indices_impr(low_x, up_x, low_y, up_y, r, z, discretization_s
 
 # Function to compute the sum of allele_distr values for neighboring points
 def _local_distr_impr(allele_distr, grid_points, neighbors_indices, no_alleles):
-    sum_values = np.zeros(no_alleles)
-    for idx in neighbors_indices:
-        # Access values of neighboring grid points and sum them
-        sum_values += allele_distr[grid_points[idx][0]-1, grid_points[idx][1]-1,:]
+    sum_values = allele_distr[grid_points[neighbors_indices, 0] - 1, grid_points[neighbors_indices, 1] - 1, :].sum(axis=0)
     return sum_values / len(neighbors_indices)
 
 
@@ -196,12 +193,23 @@ def improved_update_allele_distribution(
         plot=False
         ):
     
+    # dictionary to store local grid and neighbors indices for reuse
+    idx_dict = {}
     lower_x, upper_x, lower_y, upper_y = _get_indices(z, r, length, discretization_steps)
 
     for t in range(T):
-        # Compute the sum of allele_distr values for neighboring points
-        local_grid, neighbors_indices = _get_neighbors_indices_impr(lower_x[t], upper_x[t], lower_y[t], upper_y[t], r[t], z[:,t], discretization_steps)
+        # check if index is already in dictionary
+        key = (lower_x[t], upper_x[t], lower_y[t], upper_y[t])
+        if key in idx_dict:
+            local_grid, neighbors_indices = idx_dict[(lower_x[t], upper_x[t], lower_y[t], upper_y[t])]
+        else:
+            local_grid, neighbors_indices = _get_neighbors_indices_impr(lower_x[t], upper_x[t], lower_y[t], upper_y[t], r[t], z[:,t], discretization_steps)
+            # write to dictionary for future use
+            idx_dict[key] = (local_grid, neighbors_indices)
+
+
         if neighbors_indices != []:
+            # 1. get the local distribution of alleles at indices x,y
             local_distr_var = _local_distr_impr(allele_distr, local_grid, neighbors_indices, no_alleles)
             
             # 2. sample a parent allele from the local distribution
